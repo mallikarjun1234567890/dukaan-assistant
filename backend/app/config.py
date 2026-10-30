@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     jwt_secret: str = Field(default="")
-    database_url: str = "sqlite:///./data/dukaan.db"
+    database_url: str = "postgresql+psycopg://dukaan:dukaan@localhost:5432/dukaan"
     cors_origins: str = "http://localhost:5173"
     cookie_secure: bool = False
     access_token_expire_minutes: int = 60
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     ai_rate_limit_per_minute: int = 10
     gemini_timeout_ms: int = 20_000
     groq_api_key: str = ""
-    groq_model: str = "llama-3.1-8b-instant"
+    groq_model: str = "openai/gpt-oss-20b"
     hf_token: str = ""
     hf_model: str = "meta-llama/Llama-3.2-3B-Instruct"
     ollama_base_url: str = "http://127.0.0.1:11434"
@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     cloudinary_api_secret: str = ""
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""
+    razorpay_mode: str = "test"
+    billing_list_amount_paise: int = 49_900
+    billing_test_amount_paise: int = 100
     resend_api_key: str = ""
     resend_from_email: str = "Dukaan Assistant <beth.t@example.com>"
     frontend_url: str = "http://localhost:5173"

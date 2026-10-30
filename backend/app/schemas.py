@@ -35,6 +35,7 @@ class RegisterRequest(BaseModel):
     shop_name: str = Field(min_length=2, max_length=200)
     owner_name: str = Field(min_length=1, max_length=120)
     phone: str = Field(min_length=8, max_length=30)
+    plan_preference: Literal["trial", "monthly"] = "trial"
 
     @field_validator("shop_name", "owner_name", "phone")
     @classmethod
@@ -56,6 +57,7 @@ class UserOut(BaseModel):
     owner_name: str = ""
     avatar_url: str = ""
     plan: str = ""
+    checkout_preference: str = "trial"
     shop_locked: bool = False
     trial_ends_at: datetime | None = None
     grace_ends_at: datetime | None = None
@@ -82,6 +84,7 @@ class ShopSettingsOut(BaseModel):
     weekly_off: str
     logo_url: str
     plan: str = "trial"
+    checkout_preference: str = "trial"
     trial_started_at: datetime | None = None
     trial_ends_at: datetime | None = None
     grace_ends_at: datetime | None = None
@@ -296,8 +299,11 @@ class BillingConfigOut(BaseModel):
     enabled: bool
     key_id: str = ""
     plan: str = "trial"
+    checkout_preference: str = "trial"
     amount_rupees: int = 1
+    amount_paise: int = 100
     list_price_rupees: int = 499
+    environment: str = "test"
     trial_ends_at: datetime | None = None
     grace_ends_at: datetime | None = None
     plan_expires_at: datetime | None = None
@@ -311,6 +317,10 @@ class AdminShopOut(BaseModel):
     owner_email: str = ""
     phone: str = ""
     plan: str
+    checkout_preference: str = "trial"
+    access_state: str = "trial_active"
+    admin_locked: bool = False
+    shop_locked: bool = False
     trial_ends_at: datetime | None = None
     grace_ends_at: datetime | None = None
     plan_expires_at: datetime | None = None
@@ -327,8 +337,13 @@ class AdminStatsOut(BaseModel):
     trial_count: int
     active_count: int
     expired_count: int
+    pending_payment_count: int = 0
+    locked_count: int = 0
+    trial_expired_count: int = 0
+    paid_expired_count: int = 0
     successful_pays: int
     test_revenue_rupees: int
+    live_revenue_rupees: int = 0
     list_revenue_rupees: int
     list_price_rupees: int = 499
 
@@ -338,12 +353,13 @@ class BillingOrderOut(BaseModel):
     amount: int
     currency: str
     key_id: str
+    environment: str = "test"
 
 
 class BillingVerifyIn(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+    razorpay_order_id: str = Field(min_length=1, max_length=80)
+    razorpay_payment_id: str = Field(min_length=1, max_length=80)
+    razorpay_signature: str = Field(min_length=1, max_length=200)
 
 
 class HealthOut(BaseModel):

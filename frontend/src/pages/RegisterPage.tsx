@@ -73,6 +73,7 @@ export function RegisterPage() {
         shop_name: shopName,
         owner_name: ownerName,
         phone,
+        plan_preference: plan,
         shop_photo: shopPhoto,
         owner_photo: ownerPhoto,
       })

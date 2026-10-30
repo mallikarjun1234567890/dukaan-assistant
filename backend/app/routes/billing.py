@@ -1,29 +1,29 @@
-"""Razorpay checkout for the ₹499/month plan. Test mode charges ₹1."""
+"""Razorpay checkout. Advertised price is ₹499; test mode charges the configured test amount."""
 
-import hashlib
-import hmac
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from app.dependencies import AppSettings, CurrentUser, DBSession
-from app.models import Payment, Shop
+from app.models import Shop
 from app.schemas import BillingConfigOut, BillingOrderOut, BillingVerifyIn
-from app.services.subscription import (
-    LIST_PRICE_RUPEES,
-    TEST_AMOUNT_PAISE,
-    TEST_CHARGE_RUPEES,
-    activate_paid,
-    shop_is_locked,
+from app.services.billing_service import (
+    BillingError,
+    billing_enabled,
+    billing_environment,
+    charge_rupees,
+    checkout_amount_paise,
+    create_checkout_order,
+    list_price_rupees,
+    receipt_amount_rupees,
+    verify_checkout_payment,
 )
+from app.services.subscription import shop_is_locked
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 
-def _enabled(settings) -> bool:
-    return bool(settings.razorpay_key_id.strip() and settings.razorpay_key_secret.strip())
-
-
 def _shop_or_404(db, shop_id: int | None) -> Shop:
+    from fastapi import HTTPException
+
     shop = db.get(Shop, shop_id) if shop_id else None
     if shop is None:
         raise HTTPException(status_code=404, detail="Shop not found")
@@ -34,11 +34,14 @@ def _shop_or_404(db, shop_id: int | None) -> Shop:
 def billing_config(user: CurrentUser, db: DBSession, settings: AppSettings) -> BillingConfigOut:
     shop = _shop_or_404(db, user.shop_id)
     return BillingConfigOut(
-        enabled=_enabled(settings),
-        key_id=settings.razorpay_key_id if _enabled(settings) else "",
+        enabled=billing_enabled(settings),
+        key_id=settings.razorpay_key_id if billing_enabled(settings) else "",
         plan=shop.plan,
-        amount_rupees=TEST_CHARGE_RUPEES,
-        list_price_rupees=LIST_PRICE_RUPEES,
+        checkout_preference=shop.checkout_preference or "trial",
+        amount_rupees=charge_rupees(settings),
+        amount_paise=checkout_amount_paise(settings),
+        list_price_rupees=list_price_rupees(settings),
+        environment=billing_environment(settings),
         trial_ends_at=shop.trial_ends_at,
         grace_ends_at=shop.grace_ends_at,
         plan_expires_at=shop.plan_expires_at,
@@ -49,26 +52,14 @@ def billing_config(user: CurrentUser, db: DBSession, settings: AppSettings) -> B
 
 @router.post("/order", response_model=BillingOrderOut)
 def create_order(user: CurrentUser, db: DBSession, settings: AppSettings) -> BillingOrderOut:
-    _shop_or_404(db, user.shop_id)
-    if not _enabled(settings):
-        raise HTTPException(
-            status_code=503,
-            detail="Razorpay test keys are not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.",
-        )
-    try:
-        import razorpay
-    except ImportError as exc:
-        raise HTTPException(status_code=503, detail="Razorpay SDK is not installed") from exc
-
-    client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
-    order = client.order.create(
-        {"amount": TEST_AMOUNT_PAISE, "currency": "INR", "payment_capture": 1}
-    )
+    shop = _shop_or_404(db, user.shop_id)
+    row = create_checkout_order(db, shop, settings)
     return BillingOrderOut(
-        order_id=order["id"],
-        amount=order["amount"],
-        currency=order["currency"],
+        order_id=row.razorpay_order_id,
+        amount=row.amount_paise,
+        currency=row.currency,
         key_id=settings.razorpay_key_id,
+        environment=row.environment,
     )
 
 
@@ -76,34 +67,29 @@ def create_order(user: CurrentUser, db: DBSession, settings: AppSettings) -> Bil
 def verify_payment(
     payload: BillingVerifyIn, user: CurrentUser, db: DBSession, settings: AppSettings
 ) -> dict[str, str]:
-    if not _enabled(settings):
-        raise HTTPException(status_code=503, detail="Razorpay is not configured")
-    body = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}"
-    expected = hmac.new(
-        settings.razorpay_key_secret.encode(), body.encode(), hashlib.sha256
-    ).hexdigest()
-    if not hmac.compare_digest(expected, payload.razorpay_signature):
-        raise HTTPException(status_code=400, detail="Payment signature is invalid")
     shop = _shop_or_404(db, user.shop_id)
-    activate_paid(shop)
-    db.add(
-        Payment(
-            shop_id=shop.id,
-            amount_paise=TEST_AMOUNT_PAISE,
-            plan=shop.plan,
+    try:
+        plan, newly_captured = verify_checkout_payment(
+            db,
+            shop,
+            settings,
+            order_id=payload.razorpay_order_id,
+            payment_id=payload.razorpay_payment_id,
+            signature=payload.razorpay_signature,
         )
-    )
-    db.commit()
-    from app.services.email_service import deliver, send_payment_receipt
+    except BillingError:
+        raise
+    if newly_captured:
+        from app.services.email_service import deliver, send_payment_receipt
 
-    deliver(
-        settings,
-        lambda: send_payment_receipt(
-            settings=settings,
-            to=user.email,
-            shop_name=shop.name,
-            amount_rupees=TEST_CHARGE_RUPEES,
-            plan=shop.plan,
-        ),
-    )
-    return {"detail": "Subscription is now active", "plan": shop.plan}
+        deliver(
+            settings,
+            lambda: send_payment_receipt(
+                settings=settings,
+                to=user.email,
+                shop_name=shop.name,
+                amount_rupees=receipt_amount_rupees(settings),
+                plan=plan,
+            ),
+        )
+    return {"detail": "Subscription is now active", "plan": plan}

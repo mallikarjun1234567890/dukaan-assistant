@@ -9,6 +9,7 @@ from pathlib import Path
 TEST_SECRET = "test-jwt-secret-key-must-be-32chars!"
 _TMP = Path(tempfile.mkdtemp(prefix="dukaan-test-"))
 os.environ["JWT_SECRET"] = TEST_SECRET
+# Throwaway file for pytest only. Never the shop Postgres database.
 os.environ["DATABASE_URL"] = f"sqlite:///{(_TMP / 'test.db').as_posix()}"
 os.environ["GEMINI_API_KEY"] = ""
 os.environ["GROQ_API_KEY"] = ""

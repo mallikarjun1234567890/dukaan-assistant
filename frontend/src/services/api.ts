@@ -99,6 +99,8 @@ export const api = {
   adminShops: () => request<{ items: AdminShop[] }>('/api/admin/shops'),
   adminLockShop: (shopId: number) =>
     request<AdminShop>(`/api/admin/shops/${shopId}/lock`, { method: 'POST' }),
+  adminUnlockShop: (shopId: number) =>
+    request<AdminShop>(`/api/admin/shops/${shopId}/unlock`, { method: 'POST' }),
   adminExtendTrial: (shopId: number) =>
     request<AdminShop>(`/api/admin/shops/${shopId}/extend-trial`, { method: 'POST' }),
   adminMarkActive: (shopId: number) =>

@@ -24,6 +24,8 @@ class Shop(Base):
     weekly_off: Mapped[str] = mapped_column(String(20), nullable=False, default="")
     logo_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     plan: Mapped[str] = mapped_column(String(30), nullable=False, default="trial")
+    checkout_preference: Mapped[str] = mapped_column(String(20), nullable=False, default="trial")
+    admin_locked: Mapped[bool] = mapped_column(default=False)
     trial_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     grace_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -137,15 +139,40 @@ class IdempotencyKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class BillingOrder(Base):
+    """Razorpay checkout orders. Created only when the owner clicks Pay, never at register."""
+
+    __tablename__ = "billing_orders"
+    __table_args__ = (UniqueConstraint("razorpay_order_id", name="uq_billing_orders_rzp_order"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), nullable=False, index=True)
+    razorpay_order_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    amount_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR")
+    environment: Mapped[str] = mapped_column(String(10), nullable=False, default="test")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="created")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class Payment(Base):
-    """Successful subscription payments. Test mode records ₹1 each."""
+    """Captured checkout payments. Test-mode rows are not live revenue."""
 
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     shop_id: Mapped[int] = mapped_column(ForeignKey("shops.id"), nullable=False, index=True)
     amount_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="INR")
     plan: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    razorpay_order_id: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    razorpay_payment_id: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="captured")
+    environment: Mapped[str] = mapped_column(String(10), nullable=False, default="test")
+    is_test: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

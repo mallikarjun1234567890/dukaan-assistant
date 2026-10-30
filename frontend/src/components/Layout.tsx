@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { formatDate } from '../services/api'
 
@@ -32,6 +32,8 @@ const links = [
 
 export function Layout() {
   const { user, logout } = useAuth()
+  const { pathname } = useLocation()
+  const isChat = pathname === '/ai'
   const [open, setOpen] = useState(false)
   const daysLeft = trialDaysLeft(user?.trial_ends_at)
   const showTrialBanner = user?.plan === 'trial' && daysLeft != null && daysLeft <= 5
@@ -61,8 +63,8 @@ export function Layout() {
   )
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="no-print hidden flex-col bg-[#0b3b36] px-4 py-5 text-white lg:flex">
+    <div className="flex h-dvh flex-col overflow-hidden lg:grid lg:grid-cols-[260px_1fr]">
+      <aside className="no-print hidden h-full flex-col overflow-y-auto bg-[#0b3b36] px-4 py-5 text-white lg:flex">
         <div className="mb-8 flex items-center gap-3 px-2">
           {user?.avatar_url ? (
             <img src={user.avatar_url} alt="" className="h-10 w-10 rounded-xl object-cover" />
@@ -87,7 +89,7 @@ export function Layout() {
         </button>
       </aside>
 
-      <div className="min-w-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
           <div className="flex items-center gap-2 font-semibold text-teal-800">
             <Store size={18} />
@@ -121,14 +123,24 @@ export function Layout() {
             </button>
           </div>
         ) : null}
-        <main className="px-4 py-6 sm:px-6 lg:px-8">
+        <main
+          className={`min-h-0 flex-1 px-4 sm:px-6 lg:px-8 ${
+            isChat ? 'flex flex-col overflow-hidden py-4' : 'overflow-auto py-6'
+          }`}
+        >
           {showTrialBanner ? (
-            <div className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+            <div className="mb-4 shrink-0 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
               Trial ends {user?.trial_ends_at ? formatDate(user.trial_ends_at) : 'soon'} — {daysLeft} day(s)
               left. Subscribe ₹499/month from Settings (test charge ₹1).
             </div>
           ) : null}
-          <Outlet />
+          {isChat ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <Outlet />
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
     </div>

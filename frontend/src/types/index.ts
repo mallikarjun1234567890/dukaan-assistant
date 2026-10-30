@@ -9,6 +9,7 @@ export interface User {
   owner_name?: string
   avatar_url?: string
   plan?: string
+  checkout_preference?: string
   shop_locked?: boolean
   trial_ends_at?: string | null
   grace_ends_at?: string | null
@@ -26,6 +27,7 @@ export interface ShopSettings {
   weekly_off: string
   logo_url: string
   plan?: string
+  checkout_preference?: string
   trial_started_at?: string | null
   trial_ends_at?: string | null
   grace_ends_at?: string | null
@@ -154,8 +156,11 @@ export interface BillingConfig {
   enabled: boolean
   key_id: string
   plan: string
+  checkout_preference?: string
   amount_rupees: number
+  amount_paise?: number
   list_price_rupees?: number
+  environment?: string
   trial_ends_at?: string | null
   grace_ends_at?: string | null
   plan_expires_at?: string | null
@@ -168,8 +173,13 @@ export interface AdminStats {
   trial_count: number
   active_count: number
   expired_count: number
+  pending_payment_count?: number
+  locked_count?: number
+  trial_expired_count?: number
+  paid_expired_count?: number
   successful_pays: number
   test_revenue_rupees: number
+  live_revenue_rupees?: number
   list_revenue_rupees: number
   list_price_rupees: number
 }
@@ -180,6 +190,10 @@ export interface AdminShop {
   owner_email: string
   phone: string
   plan: string
+  checkout_preference?: string
+  access_state?: string
+  admin_locked?: boolean
+  shop_locked?: boolean
   trial_ends_at: string | null
   grace_ends_at: string | null
   plan_expires_at: string | null
@@ -193,6 +207,7 @@ export interface RegisterPayload {
   shop_name: string
   owner_name: string
   phone: string
+  plan_preference?: 'trial' | 'monthly'
   shop_photo?: File | null
   owner_photo?: File | null
 }
@@ -202,4 +217,5 @@ export interface BillingOrder {
   amount: number
   currency: string
   key_id: string
+  environment?: string
 }

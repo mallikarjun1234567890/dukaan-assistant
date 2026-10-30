@@ -101,8 +101,32 @@ def test_expired_shop_can_read_settings_and_verify_billing(client, db, monkeypat
     app_settings = get_settings()
     monkeypatch.setattr(app_settings, "razorpay_key_id", "rzp_test_dummy")
     monkeypatch.setattr(app_settings, "razorpay_key_secret", "rzp_test_secret")
+    monkeypatch.setattr(app_settings, "razorpay_mode", "test")
+    monkeypatch.setattr(app_settings, "billing_test_amount_paise", 100)
+    from app.models import BillingOrder
+
     order_id = "order_lock_1"
     payment_id = "pay_lock_1"
+    db.add(
+        BillingOrder(
+            shop_id=shop_id,
+            razorpay_order_id=order_id,
+            amount_paise=100,
+            currency="INR",
+            environment="test",
+            status="created",
+        )
+    )
+    db.commit()
+    monkeypatch.setattr(
+        "app.services.billing_service.fetch_razorpay_payment",
+        lambda _settings, _pid: {
+            "order_id": order_id,
+            "amount": 100,
+            "currency": "INR",
+            "status": "captured",
+        },
+    )
     signature = hmac.new(
         b"rzp_test_secret",
         f"{order_id}|{payment_id}".encode(),

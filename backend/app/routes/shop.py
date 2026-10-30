@@ -23,6 +23,7 @@ def _to_out(shop: Shop) -> ShopSettingsOut:
         weekly_off=str(clock["weekly_off"]),
         logo_url=shop.logo_url or "",
         plan=shop.plan or "trial",
+        checkout_preference=shop.checkout_preference or "trial",
         trial_started_at=shop.trial_started_at,
         trial_ends_at=shop.trial_ends_at,
         grace_ends_at=shop.grace_ends_at,

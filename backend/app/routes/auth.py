@@ -57,6 +57,7 @@ def user_to_out(user, db) -> UserOut:
         owner_name=user.display_name or "",
         avatar_url=user.avatar_url or "",
         plan=shop.plan if shop else "",
+        checkout_preference=shop.checkout_preference if shop else "trial",
         shop_locked=shop_is_locked(shop) if shop else False,
         trial_ends_at=shop.trial_ends_at if shop else None,
         grace_ends_at=shop.grace_ends_at if shop else None,
@@ -95,7 +96,7 @@ def register(
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists")
 
-    from app.services.subscription import start_trial
+    from app.services.subscription import normalize_plan_preference, start_trial
 
     shop = Shop(
         name=payload.shop_name,
@@ -103,6 +104,7 @@ def register(
         timezone=settings.shop_timezone,
         opens_at="09:00",
         closes_at="21:30",
+        checkout_preference=normalize_plan_preference(payload.plan_preference),
     )
     start_trial(shop)
     db.add(shop)

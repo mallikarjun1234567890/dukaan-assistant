@@ -5,9 +5,29 @@ import { useAuth } from '../context/AuthContext'
 import { api, formatDate } from '../services/api'
 import type { AdminShop, AdminStats } from '../types'
 
-function planTone(plan: string) {
-  if (plan === 'active') return 'bg-emerald-50 text-emerald-800'
-  if (plan === 'expired') return 'bg-rose-50 text-rose-800'
+function accessLabel(shop: AdminShop) {
+  const state = shop.access_state || shop.plan
+  const labels: Record<string, string> = {
+    trial_active: 'Trial',
+    pending_payment: 'Payment pending',
+    paid_active: 'Paid active',
+    trial_expired: 'Trial expired',
+    paid_expired: 'Paid expired',
+    admin_locked: 'Admin locked',
+    trial: 'Trial',
+    active: 'Paid',
+    expired: 'Expired',
+  }
+  return labels[state] || state
+}
+
+function accessTone(shop: AdminShop) {
+  const state = shop.access_state || shop.plan
+  if (state === 'paid_active' || state === 'active') return 'bg-emerald-50 text-emerald-800'
+  if (state === 'pending_payment') return 'bg-sky-50 text-sky-800'
+  if (state === 'admin_locked' || state === 'trial_expired' || state === 'paid_expired' || state === 'expired') {
+    return 'bg-rose-50 text-rose-800'
+  }
   return 'bg-amber-50 text-amber-800'
 }
 
@@ -56,11 +76,13 @@ export function AdminDashboardPage() {
         { label: 'Shops', value: String(stats.total_shops), hint: 'All tenants' },
         { label: 'Trial', value: String(stats.trial_count), hint: '30-day window' },
         { label: 'Active', value: String(stats.active_count), hint: 'Paid or demo' },
-        { label: 'Expired', value: String(stats.expired_count), hint: 'Locked shops' },
+        { label: 'Expired', value: String(stats.expired_count), hint: 'plan = expired' },
+        { label: 'Pending pay', value: String(stats.pending_payment_count ?? 0), hint: 'Monthly, still on trial' },
+        { label: 'Admin locked', value: String(stats.locked_count ?? 0), hint: 'Manual lock' },
         {
-          label: 'Revenue',
-          value: `₹${stats.test_revenue_rupees}`,
-          hint: `${stats.successful_pays} test pay(s) · list ₹${stats.list_revenue_rupees}`,
+          label: 'Live revenue',
+          value: `₹${stats.live_revenue_rupees ?? 0}`,
+          hint: `Test ₹${stats.test_revenue_rupees} · ${stats.successful_pays} captured`,
         },
       ]
     : []
@@ -97,7 +119,7 @@ export function AdminDashboardPage() {
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {cards.map((card) => (
             <div key={card.label} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{card.label}</p>
@@ -142,8 +164,8 @@ export function AdminDashboardPage() {
                     <td className="px-4 py-3 text-slate-600">{shop.owner_email || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{shop.phone || '—'}</td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${planTone(shop.plan)}`}>
-                        {shop.plan}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${accessTone(shop)}`}>
+                        {accessLabel(shop)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
@@ -160,6 +182,14 @@ export function AdminDashboardPage() {
                           className="rounded-lg bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 disabled:opacity-50"
                         >
                           Lock
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busyId === shop.id}
+                          onClick={() => void run(shop.id, () => api.adminUnlockShop(shop.id), `Unlocked ${shop.name}`)}
+                          className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+                        >
+                          Unlock
                         </button>
                         <button
                           type="button"
@@ -199,7 +229,8 @@ export function AdminDashboardPage() {
         </div>
         <p className="flex items-center gap-2 text-xs text-slate-400">
           <IndianRupee size={12} />
-          Test-mode revenue is ₹1 × successful pays. List price is ₹499/month.
+          Live revenue sums captured live payments only. Test-mode charges are shown separately and are never counted as
+          ₹499.
         </p>
       </main>
       {toast ? <Toast message={toast} tone="success" /> : null}

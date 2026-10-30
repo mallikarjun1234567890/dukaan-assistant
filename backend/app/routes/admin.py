@@ -1,10 +1,10 @@
 """Platform admin: list shops and subscription controls. No shop editor or AI."""
 
 from fastapi import APIRouter, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.dependencies import AppSettings, DBSession, PlatformAdmin
-from app.models import Payment, Shop, User
+from app.models import Shop, User
 from app.routes.auth import _set_auth_cookies, user_to_out
 from app.schemas import (
     AdminShopListOut,
@@ -14,13 +14,16 @@ from app.schemas import (
     LoginRequest,
 )
 from app.security import create_access_token, new_csrf_token, verify_password
+from app.services.billing_service import captured_payment_count, captured_revenue_paise
 from app.services.subscription import (
     LIST_PRICE_RUPEES,
-    TEST_CHARGE_RUPEES,
     delete_shop_cascade,
     extend_trial,
     lock_shop,
     mark_active_manual,
+    shop_access_state,
+    shop_is_locked,
+    unlock_shop,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -47,6 +50,10 @@ def _to_out(db, shop: Shop) -> AdminShopOut:
         owner_email=_owner_email(db, shop.id),
         phone=shop.phone or "",
         plan=shop.plan,
+        checkout_preference=shop.checkout_preference or "trial",
+        access_state=shop_access_state(shop),
+        admin_locked=bool(shop.admin_locked),
+        shop_locked=shop_is_locked(shop),
         trial_ends_at=shop.trial_ends_at,
         grace_ends_at=shop.grace_ends_at,
         plan_expires_at=shop.plan_expires_at,
@@ -83,19 +90,24 @@ def admin_login(
 
 @router.get("/stats", response_model=AdminStatsOut)
 def admin_stats(_admin: PlatformAdmin, db: DBSession) -> AdminStatsOut:
-    total = db.scalar(select(func.count(Shop.id))) or 0
-    trial = db.scalar(select(func.count(Shop.id)).where(Shop.plan == "trial")) or 0
-    active = db.scalar(select(func.count(Shop.id)).where(Shop.plan == "active")) or 0
-    expired = db.scalar(select(func.count(Shop.id)).where(Shop.plan == "expired")) or 0
-    pays = db.scalar(select(func.count(Payment.id))) or 0
+    shops = list(db.scalars(select(Shop)).all())
+    states = [shop_access_state(shop) for shop in shops]
+    test_paise = captured_revenue_paise(db, live=False)
+    live_paise = captured_revenue_paise(db, live=True)
+    live_rupees = live_paise // 100
     return AdminStatsOut(
-        total_shops=total,
-        trial_count=trial,
-        active_count=active,
-        expired_count=expired,
-        successful_pays=pays,
-        test_revenue_rupees=pays * TEST_CHARGE_RUPEES,
-        list_revenue_rupees=pays * LIST_PRICE_RUPEES,
+        total_shops=len(shops),
+        trial_count=sum(1 for shop in shops if shop.plan == "trial"),
+        active_count=sum(1 for shop in shops if shop.plan == "active"),
+        expired_count=sum(1 for shop in shops if shop.plan == "expired"),
+        pending_payment_count=states.count("pending_payment"),
+        locked_count=states.count("admin_locked"),
+        trial_expired_count=states.count("trial_expired"),
+        paid_expired_count=states.count("paid_expired"),
+        successful_pays=captured_payment_count(db),
+        test_revenue_rupees=test_paise // 100,
+        live_revenue_rupees=live_rupees,
+        list_revenue_rupees=live_rupees,
         list_price_rupees=LIST_PRICE_RUPEES,
     )
 
@@ -110,6 +122,15 @@ def list_shops(_admin: PlatformAdmin, db: DBSession) -> AdminShopListOut:
 def lock(shop_id: int, _admin: PlatformAdmin, db: DBSession) -> AdminShopOut:
     shop = _shop_or_404(db, shop_id)
     lock_shop(shop)
+    db.commit()
+    db.refresh(shop)
+    return _to_out(db, shop)
+
+
+@router.post("/shops/{shop_id}/unlock", response_model=AdminShopOut)
+def unlock(shop_id: int, _admin: PlatformAdmin, db: DBSession) -> AdminShopOut:
+    shop = _shop_or_404(db, shop_id)
+    unlock_shop(shop)
     db.commit()
     db.refresh(shop)
     return _to_out(db, shop)

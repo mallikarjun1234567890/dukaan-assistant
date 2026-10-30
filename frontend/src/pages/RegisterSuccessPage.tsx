@@ -9,42 +9,47 @@ import { startSubscriptionCheckout } from '../services/razorpay'
 export function RegisterSuccessPage() {
   const { user, loading, refresh } = useAuth()
   const [searchParams] = useSearchParams()
-  const plan = parsePlanId(searchParams.get('plan'))
-  const selected = PLANS[plan]
+  const urlPlan = parsePlanId(searchParams.get('plan'))
   const [error, setError] = useState('')
-  const [paying, setPaying] = useState(false)
-  const [paid, setPaid] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'opening' | 'paid'>('idle')
 
   if (loading) {
     return <div className="p-8 text-sm text-slate-500">Checking session…</div>
   }
   if (!user) {
-    return <Navigate to={plan === 'monthly' ? '/register?plan=monthly' : '/register?plan=trial'} replace />
+    return <Navigate to={urlPlan === 'monthly' ? '/register?plan=monthly' : '/register?plan=trial'} replace />
   }
   if (user.role === 'platform_admin') {
     return <Navigate to="/admin" replace />
   }
 
+  const preference = user.checkout_preference === 'monthly' || urlPlan === 'monthly' ? 'monthly' : 'trial'
+  const selected = PLANS[preference]
+  const trialEnds = user.trial_ends_at ? formatDate(user.trial_ends_at) : '30 days from registration'
+  const alreadyPaid = status === 'paid' || user.plan === 'active'
+  const busy = status === 'opening'
+
   async function startPaid() {
-    setPaying(true)
+    if (busy || alreadyPaid) return
+    setStatus('opening')
     setError('')
     try {
       await startSubscriptionCheckout({
         onSuccess: async () => {
-          setPaid(true)
+          setError('')
+          setStatus('paid')
           await refresh()
         },
-        onError: (message) => setError(message),
+        onError: (message, terminal = true) => {
+          setError(message)
+          if (terminal) setStatus('idle')
+        },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start Razorpay checkout')
-    } finally {
-      setPaying(false)
+      setStatus('idle')
     }
   }
-
-  const trialEnds = user.trial_ends_at ? formatDate(user.trial_ends_at) : '30 days from registration'
-  const alreadyPaid = paid || user.plan === 'active'
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#f3f6f5] px-4 py-12">
@@ -54,26 +59,27 @@ export function RegisterSuccessPage() {
         <h1 className="mt-2 text-2xl font-extrabold text-slate-900">{user.shop_name} is set up</h1>
         <p className="mt-3 text-sm text-slate-600">
           Selected plan: <strong>{selected.name}</strong>
-          {plan === 'trial' ? ` · ${selected.period}` : ` · ${selected.price}${selected.period}`}
+          {preference === 'trial' ? ` · ${selected.period}` : ` · ${selected.price}${selected.period}`}
         </p>
 
-        {plan === 'trial' || !alreadyPaid ? (
+        {!alreadyPaid ? (
           <p className="mt-4 rounded-2xl bg-teal-50 px-4 py-3 text-sm text-teal-900">
             The server started a 30-day trial
             {user.trial_ends_at ? ` ending ${trialEnds}` : ''}. Repeated sign-in does not restart those dates.
           </p>
         ) : (
           <p className="mt-4 rounded-2xl bg-teal-50 px-4 py-3 text-sm text-teal-900">
-            Payment was verified. The monthly plan is now active for this shop.
+            Payment was verified by the server. The monthly plan is now active for this shop.
           </p>
         )}
 
-        {plan === 'monthly' && !alreadyPaid ? (
+        {preference === 'monthly' && !alreadyPaid ? (
           <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-950">
             <p className="font-semibold">Payment is still pending</p>
             <p className="mt-1">
-              The advertised price is ₹499/month. Checkout uses Razorpay test mode and charges ₹1. Paid access
-              turns on only after the backend verifies the signature. Until then this shop remains on the trial.
+              The advertised price is ₹499/month. Test mode charges the server-configured test amount (default ₹1).
+              Paid access turns on only after the backend verifies a captured Razorpay payment. Skip checkout to stay
+              on the same trial.
             </p>
           </div>
         ) : null}
@@ -85,21 +91,21 @@ export function RegisterSuccessPage() {
         ) : null}
 
         <div className="mt-6 flex flex-col gap-3">
-          {plan === 'monthly' && !alreadyPaid ? (
+          {preference === 'monthly' && !alreadyPaid ? (
             <button
               type="button"
               onClick={() => void startPaid()}
-              disabled={paying}
+              disabled={busy}
               className="rounded-xl bg-[#0b3b36] px-4 py-2.5 font-semibold text-white hover:bg-[#0d4640] disabled:opacity-60"
             >
-              {paying ? 'Opening checkout…' : 'Continue to test checkout'}
+              {status === 'opening' ? 'Waiting for payment…' : 'Pay now'}
             </button>
           ) : null}
           <Link
             to={SHOP_HOME}
             className="rounded-xl bg-teal-700 px-4 py-2.5 text-center font-semibold text-white hover:bg-teal-800"
           >
-            Go to dashboard
+            {preference === 'monthly' && !alreadyPaid ? 'Skip and use trial' : 'Go to dashboard'}
           </Link>
         </div>
       </div>

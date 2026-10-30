@@ -51,22 +51,48 @@ def test_billing_requires_auth(client):
     assert response.status_code == 401
 
 
-def test_billing_verify_sends_receipt(client, auth_a, monkeypatch):
+def test_billing_verify_sends_receipt(client, auth_a, db, monkeypatch):
     import hashlib
     import hmac
 
+    from sqlalchemy import select
+
     from app.config import get_settings
+    from app.models import BillingOrder, Shop
     from app.services import email_service
 
     settings = get_settings()
     monkeypatch.setattr(settings, "razorpay_key_id", "rzp_test_dummy")
     monkeypatch.setattr(settings, "razorpay_key_secret", "rzp_test_secret")
+    monkeypatch.setattr(settings, "razorpay_mode", "test")
+    monkeypatch.setattr(settings, "billing_test_amount_paise", 100)
     monkeypatch.setattr(settings, "resend_api_key", "re_test")
     sent: list[dict] = []
     monkeypatch.setattr(email_service, "send_email", lambda **kwargs: sent.append(kwargs))
 
+    shop = db.scalar(select(Shop).where(Shop.name == "Alpha Kirana"))
     order_id = "order_test_1"
     payment_id = "pay_test_1"
+    db.add(
+        BillingOrder(
+            shop_id=shop.id,
+            razorpay_order_id=order_id,
+            amount_paise=100,
+            currency="INR",
+            environment="test",
+            status="created",
+        )
+    )
+    db.commit()
+    monkeypatch.setattr(
+        "app.services.billing_service.fetch_razorpay_payment",
+        lambda _settings, _pid: {
+            "order_id": order_id,
+            "amount": 100,
+            "currency": "INR",
+            "status": "captured",
+        },
+    )
     signature = hmac.new(
         b"rzp_test_secret",
         f"{order_id}|{payment_id}".encode(),

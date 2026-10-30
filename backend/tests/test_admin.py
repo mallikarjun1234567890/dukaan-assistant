@@ -45,10 +45,13 @@ def test_admin_lock_and_extend(client, auth_admin):
     client.cookies.clear()
     locked = client.post(f"/api/admin/shops/{shop_id}/lock", headers=auth_admin)
     assert locked.status_code == 200
-    assert locked.json()["plan"] == "expired"
+    assert locked.json()["admin_locked"] is True
+    assert locked.json()["access_state"] == "admin_locked"
+    assert locked.json()["plan"] == "trial"
     extended = client.post(f"/api/admin/shops/{shop_id}/extend-trial", headers=auth_admin)
     assert extended.status_code == 200
     assert extended.json()["plan"] == "trial"
+    assert extended.json()["admin_locked"] is False
 
 
 def test_admin_mark_active(client, auth_admin):

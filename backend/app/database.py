@@ -89,6 +89,8 @@ def ensure_schema_updates() -> None:
             "weekly_off": "VARCHAR(20) DEFAULT ''",
             "logo_url": "VARCHAR(500) DEFAULT ''",
             "plan": "VARCHAR(30) DEFAULT 'trial'",
+            "checkout_preference": "VARCHAR(20) DEFAULT 'trial'",
+            "admin_locked": "BOOLEAN DEFAULT FALSE",
             "trial_started_at": timestamp,
             "trial_ends_at": timestamp,
             "grace_ends_at": timestamp,
@@ -101,6 +103,14 @@ def ensure_schema_updates() -> None:
         },
         "products": {
             "image_url": "VARCHAR(500) DEFAULT ''",
+        },
+        "payments": {
+            "currency": "VARCHAR(10) DEFAULT 'INR'",
+            "razorpay_order_id": "VARCHAR(80) DEFAULT ''",
+            "razorpay_payment_id": "VARCHAR(80) DEFAULT ''",
+            "status": "VARCHAR(30) DEFAULT 'captured'",
+            "environment": "VARCHAR(10) DEFAULT 'test'",
+            "is_test": "BOOLEAN DEFAULT TRUE",
         },
     }
     with engine.begin() as conn:
@@ -115,6 +125,29 @@ def ensure_schema_updates() -> None:
             users_cols = _existing_columns(conn, "users")
             if "shop_id" in users_cols:
                 conn.execute(text("ALTER TABLE users ALTER COLUMN shop_id DROP NOT NULL"))
+        _ensure_billing_indexes(conn, is_postgres)
+
+
+def _ensure_billing_indexes(conn, is_postgres: bool) -> None:
+    """Partial unique indexes so empty legacy payment IDs do not collide."""
+    statements = [
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_rzp_payment "
+        "ON payments (razorpay_payment_id) WHERE razorpay_payment_id <> ''",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_rzp_order "
+        "ON payments (razorpay_order_id) WHERE razorpay_order_id <> ''",
+    ]
+    if is_postgres:
+        statements = [
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_rzp_payment "
+            "ON payments (razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL AND razorpay_payment_id <> ''",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_rzp_order "
+            "ON payments (razorpay_order_id) WHERE razorpay_order_id IS NOT NULL AND razorpay_order_id <> ''",
+        ]
+    payments = _existing_columns(conn, "payments")
+    if "razorpay_payment_id" not in payments:
+        return
+    for statement in statements:
+        conn.execute(text(statement))
 
 
 def init_db() -> None:

@@ -59,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           shop_name: payload.shop_name,
           owner_name: payload.owner_name,
           phone: payload.phone,
+          plan_preference: payload.plan_preference ?? 'trial',
         })
         setUser(result.user)
         if (payload.shop_photo) {

@@ -8,13 +8,24 @@ import type { Invoice, Product } from '../types'
 
 interface LineDraft {
   productId: number
-  quantity: number
+  quantity: string
+}
+
+function parseQuantityInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (digits === '') return ''
+  return String(Number.parseInt(digits, 10))
+}
+
+function quantityValue(raw: string): number {
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 export function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [lines, setLines] = useState<LineDraft[]>([{ productId: 0, quantity: 1 }])
+  const [lines, setLines] = useState<LineDraft[]>([{ productId: 0, quantity: '1' }])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -39,15 +50,16 @@ export function InvoicesPage() {
 
   const preview = useMemo(() => {
     return lines
-      .filter((line) => line.productId && line.quantity > 0)
+      .filter((line) => line.productId && quantityValue(line.quantity) > 0)
       .map((line) => {
         const product = products.find((item) => item.id === line.productId)
         const unit = product ? Number(product.selling_price) : 0
+        const quantity = quantityValue(line.quantity)
         return {
           product,
-          quantity: line.quantity,
+          quantity,
           unit,
-          total: unit * line.quantity,
+          total: unit * quantity,
         }
       })
   }, [lines, products])
@@ -57,8 +69,8 @@ export function InvoicesPage() {
   async function createInvoice() {
     setError('')
     const items = lines
-      .filter((line) => line.productId && line.quantity > 0)
-      .map((line) => ({ product_id: line.productId, quantity: line.quantity }))
+      .filter((line) => line.productId && quantityValue(line.quantity) > 0)
+      .map((line) => ({ product_id: line.productId, quantity: quantityValue(line.quantity) }))
     if (items.length === 0) {
       setError('Add at least one product with a quantity greater than zero.')
       return
@@ -67,7 +79,7 @@ export function InvoicesPage() {
     try {
       const invoice = await api.createInvoice(items, idempotencyKey)
       setToast(`Invoice ${invoice.invoice_number} created`)
-      setLines([{ productId: 0, quantity: 1 }])
+      setLines([{ productId: 0, quantity: '1' }])
       setIdempotencyKey(crypto.randomUUID())
       await load()
     } catch (err) {
@@ -114,13 +126,14 @@ export function InvoicesPage() {
                 <label className="text-sm">
                   <span className="sr-only">Quantity</span>
                   <input
-                    type="number"
-                    min={1}
-                    step={1}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={line.quantity}
                     onChange={(event) => {
                       const next = [...lines]
-                      next[index] = { ...line, quantity: Number(event.target.value) }
+                      next[index] = { ...line, quantity: parseQuantityInput(event.target.value) }
                       setLines(next)
                     }}
                     className="w-full rounded-xl border border-slate-200 px-3 py-2"
@@ -139,7 +152,7 @@ export function InvoicesPage() {
           </div>
           <button
             type="button"
-            onClick={() => setLines([...lines, { productId: 0, quantity: 1 }])}
+            onClick={() => setLines([...lines, { productId: 0, quantity: '1' }])}
             className="mt-3 text-sm font-medium text-teal-700"
           >
             Add line

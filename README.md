@@ -8,13 +8,13 @@ This is a working single-shop demo, not a production SaaS. Shop-owned tables alr
 
 - React + Vite frontend on `http://localhost:5173`
 - FastAPI backend on `http://localhost:8000`
-- SQLite via SQLAlchemy
+- Postgres via SQLAlchemy (one shop database)
 - HttpOnly JWT cookie + readable CSRF cookie
 - AI is called only from the backend, with a Python-built shop snapshot
 - Fallback order: Gemini → Groq → hosted Hugging Face → local Ollama (`llama3.2`)
 
 ```
-Browser  →  Vite React app  →  FastAPI  →  SQLite (default) or Postgres
+Browser  →  Vite React app  →  FastAPI  →  Postgres
                               └── Gemini → Groq → Hugging Face → Ollama
 ```
 
@@ -22,7 +22,7 @@ Browser  →  Vite React app  →  FastAPI  →  SQLite (default) or Postgres
 
 **Frontend:** React, Vite, TypeScript, Tailwind CSS, Lucide React, Recharts
 
-**Backend:** Python 3.11+, FastAPI, Uvicorn, SQLAlchemy, SQLite (default) or Postgres, Pydantic, PyJWT, pwdlib/Argon2, Google GenAI / Groq / Hugging Face / Ollama, Cloudinary, Razorpay (test)
+**Backend:** Python 3.11+, FastAPI, Uvicorn, SQLAlchemy, Postgres, Pydantic, PyJWT, pwdlib/Argon2, Google GenAI / Groq / Hugging Face / Ollama, Cloudinary, Razorpay (test)
 
 ## Folder structure
 
@@ -30,7 +30,7 @@ Browser  →  Vite React app  →  FastAPI  →  SQLite (default) or Postgres
 frontend/          React app
 backend/app/       FastAPI application
 backend/tests/     Isolated pytest suite
-backend/data/      SQLite file after seed (gitignored)
+backend/data/      unused leftover folder (gitignored)
 ```
 
 ## Prerequisites
@@ -40,7 +40,7 @@ backend/data/      SQLite file after seed (gitignored)
 - A Gemini API key only if you want Ask Dukaan AI to answer (Groq, Hugging Face, or local Ollama are optional backups)
 - Cloudinary credentials only if you want product/shop/profile photos
 - Razorpay **test** keys only if you want the ₹1 checkout demo
-- Postgres only after you install it; SQLite is the default and stays working
+- Postgres running locally (or via Docker). Set `DATABASE_URL` in `backend/.env`
 
 ## Local development (Windows PowerShell)
 
@@ -71,7 +71,7 @@ python -m app.seed
 Start the API:
 
 ```powershell
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 - API health: http://localhost:8000/api/health
@@ -115,15 +115,15 @@ Never put keys in `VITE_` frontend variables. If every provider is missing, inve
 
 Optional. Add `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to `backend/.env`, then upload a shop logo, profile photo, or product image from the UI. Secrets stay on the backend.
 
-## Postgres (optional)
+## Postgres
 
-Keep using SQLite until Postgres is installed. After it is available:
+The running app uses **one** database: Postgres. Put this in `backend/.env` (adjust user/password/host if yours differ):
 
 ```
 DATABASE_URL=postgresql+psycopg://dukaan:dukaan@localhost:5432/dukaan
 ```
 
-Or start a local server with `docker compose --profile postgres up -d postgres`. Do not delete the SQLite file until you have migrated.
+If you already have a `postgresql+pg8000://...` URL, keep it. Do not point the app at a SQLite file.
 
 ## Razorpay test checkout
 
@@ -132,7 +132,7 @@ Optional and test-mode only. Add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` fro
 ## Demo workflow
 
 1. Open http://localhost:5173 and sign in.
-2. Review dashboard cards (live SQLite totals).
+2. Review dashboard cards (live Postgres totals).
 3. Add a product on Inventory.
 4. Open a low-stock product (for example Fortune Sunflower Oil).
 5. Approve its recommendation on Reorder Recommendations.
@@ -170,7 +170,7 @@ Documented trade-offs:
 - This is a hackathon MVP, not production-secure SaaS.
 - Tokens live in cookies, not `localStorage`. SessionStorage is also unused.
 - CSRF protects cookie-authenticated writes. Login itself does not require CSRF.
-- SQLite is a single-file database. Back up `backend/data/dukaan.db` by copying the file. For recovery, restore the file and restart the API.
+- Back up Postgres with `pg_dump`. Do not keep a second SQLite copy of shop data.
 - Use HTTPS in any deployment and set `COOKIE_SECURE=true`.
 - No password reset, 2FA, audit log, or tenant admin console.
 - In-memory AI rate limits reset when the process restarts.
@@ -181,7 +181,7 @@ Documented trade-offs:
 | Symptom | What to check |
 | --- | --- |
 | `JWT_SECRET is missing or too weak` | Put a 32+ character secret in `backend/.env` |
-| Login fails after seed | Confirm you ran seed from the `backend` folder so it used the same database file |
+| Login fails after seed | Confirm `DATABASE_URL` in `backend/.env` points at the same Postgres the API uses |
 | Frontend cannot call API | Backend on port 8000, `VITE_API_BASE_URL=http://localhost:8000`, CORS origin `http://localhost:5173` |
 | 403 CSRF error | Reload after login so the CSRF cookie is present |
 | AI returns 503 | No provider key, or Gemini / Groq / Hugging Face / Ollama all failed |
@@ -195,7 +195,7 @@ cd backend
 python -m pytest
 ```
 
-Tests use a temporary SQLite file and never touch `backend/data/dukaan.db`.
+Tests use a throwaway empty file so they never read or write your Postgres shops.
 
 Frontend production build:
 
@@ -230,7 +230,7 @@ docker compose exec backend python -m app.seed
 - API: http://localhost:8000
 - Docs: http://localhost:8000/docs
 
-Stop with `docker compose down`. Logs: `docker compose logs -f backend`. The SQLite file lives in the `dukaan-data` volume.
+Stop with `docker compose down`. Logs: `docker compose logs -f backend`. Shop data lives in the `dukaan-pg` Postgres volume.
 
 Never bake secrets into images. Compose reads `JWT_SECRET` from the environment.
 
@@ -238,7 +238,7 @@ Never bake secrets into images. Compose reads `JWT_SECRET` from the environment.
 
 - Multi-user shops, invites, and role permissions
 - HTTPS termination, hardened cookie flags, and a real CSRF origin check
-- Managed PostgreSQL, migrations, and backups
+- Managed Postgres backups and a proper migration tool (Alembic)
 - Invoice taxes, GST, refunds, and payment collection
 - Supplier purchase orders
 - Observability, abuse controls, and a proper AI data-retention policy

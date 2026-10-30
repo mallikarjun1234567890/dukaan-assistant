@@ -20,19 +20,23 @@ export function SubscriptionLockPage() {
   const grace = user?.grace_ends_at || billing?.grace_ends_at
 
   async function subscribe() {
+    if (paying) return
     setPaying(true)
     setError('')
     try {
       await startSubscriptionCheckout({
         onSuccess: async () => {
+          setError('')
           setToast('Subscription is now active')
           await refresh()
         },
-        onError: (message) => setError(message),
+        onError: (message, terminal = true) => {
+          setError(message)
+          if (terminal) setPaying(false)
+        },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start Razorpay')
-    } finally {
       setPaying(false)
     }
   }
@@ -61,7 +65,10 @@ export function SubscriptionLockPage() {
         </p>
         <p className="mt-4 rounded-xl bg-teal-50 px-4 py-3 text-sm text-teal-900">
           <strong>₹499/month</strong>
-          <span className="text-teal-700"> · test charge ₹1</span>
+          <span className="text-teal-700">
+            {' '}
+            · test charge ₹{billing?.amount_rupees ?? 1} · paid access only after server verification
+          </span>
         </p>
         {error ? (
           <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
@@ -79,7 +86,7 @@ export function SubscriptionLockPage() {
             disabled={paying}
             className="mt-6 w-full rounded-xl bg-teal-700 px-4 py-2.5 font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
           >
-            {paying ? 'Opening checkout…' : 'Subscribe ₹499/month'}
+            {paying ? 'Waiting for payment…' : 'Subscribe ₹499/month'}
           </button>
         )}
         <button
